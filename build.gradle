@@ -1,13 +1,18 @@
 plugins {
     id 'java'
     id 'application'
-    id "de.undercouch.download" version "4.1.1"
+    id "de.undercouch.download" version "5.6.0"
 }
 
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
+base {
+    archivesName = project.archives_base_name
+}
 
-archivesBaseName = project.archives_base_name
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
 version = project.version
 group = project.maven_group
 
@@ -21,59 +26,54 @@ repositories {
 }
 
 dependencies {
-    implementation "org.json:json:20210307"
-    implementation "com.formdev:flatlaf:1.6.1"
+    implementation "org.json:json:20251224"
+    implementation "com.formdev:flatlaf:3.7"
     compileOnly "org.lwjgl:lwjgl-tinyfd:3.3.2"
-    implementation "net.fabricmc:fabric-installer:1.0.1"
+    implementation "net.fabricmc:fabric-installer:1.1.1"
 }
 
 application {
     mainClass.set(project.main_class)
 }
 
-class FileOutput extends DefaultTask {
-    @OutputFile
-    File output
-}
-
-def bootstrapVersion = "0.5.2"
+def bootstrapVersion = "0.6.0"
 def bootstrapArch = "i686"
 
-task downloadBootstrap(type: Download) {
+def downloadBootstrap = tasks.register("downloadBootstrap", Download) {
     src "https://maven.fabricmc.net/net/fabricmc/fabric-installer-native-bootstrap/windows-${bootstrapArch}/${bootstrapVersion}/windows-${bootstrapArch}-${bootstrapVersion}.exe"
-    dest project.buildDir
+    dest layout.buildDirectory
 }
 
-task nativeExe(dependsOn: [downloadBootstrap], type: FileOutput) {
-    output = file("${projectDir}/build/libs/${archivesBaseName}-${project.version}.exe")
+def nativeExe = tasks.register("nativeExe") {
+    dependsOn(downloadBootstrap, tasks.named("jar"))
+
+    def outputFile = layout.buildDirectory.file("libs/${base.archivesName.get()}-${project.version}.exe")
+    outputs.file(outputFile)
     outputs.upToDateWhen { false }
 
-    doFirst {
-        output.delete()
-    }
-
     doLast {
+        def output = outputFile.get().asFile
+        output.delete()
         output.createNewFile()
-        output.setBytes downloadBootstrap.outputFiles.first().readBytes()
-
-        output.append jar.archiveFile.get().getAsFile().readBytes()
+        output.setBytes downloadBootstrap.get().outputFiles.first().readBytes()
+        output.append tasks.named("jar").get().archiveFile.get().asFile.readBytes()
     }
 }
-build.dependsOn nativeExe
 
-jar {
-//    into 'mods', {
-//        from 'mods'
-//    }
+tasks.named("build") {
+    dependsOn(nativeExe)
+}
 
+tasks.named("jar", Jar) {
     manifest {
         attributes("Main-Class": application.mainClass)
+        attributes("Enable-Native-Access": "ALL-UNNAMED")
     }
 
     duplicatesStrategy = DuplicatesStrategy.WARN
     from "LICENSE"
 
-    from (configurations.compileClasspath.filter{ it.exists() }.collect { it.isDirectory() ? it : zipTree(it) }) {
+    from(configurations.runtimeClasspath.filter { it.exists() }.collect { it.isDirectory() ? it : zipTree(it) }) {
         exclude 'META-INF/*.SF'
         exclude 'META-INF/*.DSA'
         exclude 'META-INF/*.RSA'
@@ -81,40 +81,24 @@ jar {
 }
 
 sourceSets {
-    // "header" API stubs for implementing APIs from other mods
-    // These are not compiled into the resulting JAR file or loaded at runtime,
-    // they are for compilation purposes only.
-    //
-    // Proper implementations of these classes *might* be available at runtime,
-    // but that is not guaranteed. Generally, we must detect whether they are
-    // available through mod loading checks (or if a corresponding entrypoint is
-    // called by Fabric Loader / Quilt Loader / etc).
     headers {
         java {
-            compileClasspath += main.compileClasspath
+            compileClasspath += sourceSets.main.compileClasspath
         }
     }
 
     main {
         java {
-            // headers / API stubs are only available at compilation time.
-            compileClasspath += headers.output
+            compileClasspath += sourceSets.headers.output
         }
     }
 }
 
-
 tasks.withType(JavaCompile).configureEach {
-    // ensure that the encoding is set to UTF-8, no matter what the system default is
-    // this fixes some edge cases with special characters not displaying correctly
-    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
-    // If Javadoc is generated, this must be specified in that task too.
-    it.options.encoding = "UTF-8"
+    options.encoding = "UTF-8"
 
-    // JDK 9 introduced a new way of specifying the target java version that will make sure no newer classes or methods are used.
-    // We'll use that if it's available, but otherwise we'll use the older option.
     def targetVersion = 8
     if (JavaVersion.current().isJava9Compatible()) {
-        it.options.release = targetVersion
+        options.release = targetVersion
     }
 }
