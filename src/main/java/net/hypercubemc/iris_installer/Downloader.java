@@ -29,6 +29,7 @@ public class Downloader extends SwingWorker<Void, Void> {
         URL url = new URL(this.url);
         HttpsURLConnection connection = (HttpsURLConnection) url
                 .openConnection();
+        connection.setRequestProperty("User-Agent", "Complementary-Installer");
         long filesize = connection.getContentLengthLong();
 
         if (filesize == -1) {
