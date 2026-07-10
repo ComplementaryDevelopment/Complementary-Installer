@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "complementaryinstaller",
+  "version": "${version}",
+  "name": "Complementary Installer - FakeMod",
+  "description": "If you are seeing this, there's a bug. Remove the Complementary installer from your mods folder.",
+  "authors": [
+    "Me!"
+  ],
+  "contact": {
+    "homepage": "https://www.complementary.dev/"
+  },
+  "license": "LGPLv3",
+  "environment": "*",
+  "entrypoints": {
+    "preLaunch": [
+      "net.hypercubemc.iris_installer.IrisPreLaunch"
+    ]
+  }
+}
