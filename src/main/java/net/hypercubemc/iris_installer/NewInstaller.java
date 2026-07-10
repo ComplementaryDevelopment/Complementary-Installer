@@ -4,7 +4,9 @@
  */
 package net.hypercubemc.iris_installer;
 
+import com.formdev.flatlaf.FlatDarculaLaf;
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatIntelliJLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 
 import java.awt.*;
@@ -18,11 +20,16 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.swing.*;
+import javax.swing.Timer;
 
+import com.formdev.flatlaf.ui.FlatTitlePane;
+import com.formdev.flatlaf.util.SystemFileChooser;
 import net.fabricmc.installer.Main;
+import net.fabricmc.installer.launcher.MojangLauncherHelperWrapper;
 import net.fabricmc.installer.util.MetaHandler;
 import net.fabricmc.installer.util.Utils;
 import net.hypercubemc.iris_installer.layouts.Settings;
@@ -39,9 +46,11 @@ public class NewInstaller extends JFrame {
 
     private static boolean dark = false;
     private boolean installAsMod;
-    private boolean styleIsUnbound = false;
+    private Boolean styleIsUnbound = null;
     private final String outdatedPlaceholder = "Warning: Iris shader loader has ended support for <version>.";
     private final String snapshotPlaceholder = "Warning: <version> is a snapshot build and may";
+    private final String launcherOpenDialogTitle = "Minecraft Launcher Open";
+    private final String launcherOpenDialogMessage = "Close the Minecraft Launcher to continue installation.";
     private final String BASE_URL = "https://raw.githubusercontent.com/IrisShaders/Iris-Installer-Files/master/";
     private InstallerMeta.Version selectedVersion;
     private final List<InstallerMeta.Version> GAME_VERSIONS;
@@ -63,7 +72,7 @@ public class NewInstaller extends JFrame {
      */
     public NewInstaller() {
         super("Complementary Installer");
-        Main.LOADER_META = new MetaHandler(("v2/versions/loader"));
+        Main.LOADER_META = new MetaHandler("loader", ("v2/versions/loader"));
 
         registerStatsCleanupHook();
 
@@ -93,8 +102,6 @@ public class NewInstaller extends JFrame {
             gameVersionList.addItem(version.name);
         }
 
-        // Set default dir (.minecraft)
-        directoryName.setText(getDefaultInstallDir().toFile().getName());
 
         // Hide outdated version text
         outdatedText1.setVisible(false);
@@ -186,11 +193,13 @@ public class NewInstaller extends JFrame {
                     getInstallDir().resolve("iris-reserved/").toFile().mkdir();
                 }
 
+                getInstallDir().resolve("shaderpacks").toFile().mkdir();
+
                 while (entry != null) {
                     String entryName = entry.getName();
 
                     if (!installAsMod && entryName.startsWith("mods/")) {
-                        entryName = entryName.replace("mods/", "iris-reserved/" + selectedVersion + "/");
+                        entryName = entryName.replace("mods/", ("iris-reserved/") + selectedVersion + "/");
                     }
 
                     File filePath = getInstallDir().resolve(entryName).toFile();
@@ -270,7 +279,6 @@ public class NewInstaller extends JFrame {
         javax.swing.ToolTipManager.sharedInstance().setDismissDelay(Integer.MAX_VALUE);
         java.awt.GridBagConstraints gridBagConstraints;
 
-        installType = new javax.swing.ButtonGroup();
         irisInstallerLabel = new javax.swing.JLabel();
         linkLabel = new javax.swing.JLabel();
         gameVersionLabel = new javax.swing.JLabel();
@@ -279,9 +287,7 @@ public class NewInstaller extends JFrame {
         advancedSettingsButton = new javax.swing.JButton();
         installationType = new javax.swing.JLabel();
         installationDirectory = new javax.swing.JLabel();
-        installationTypesContainer = new javax.swing.JPanel();
-        standaloneType = new javax.swing.JRadioButton();
-        fabricType = new javax.swing.JRadioButton();
+        modSupportToggle = new javax.swing.JCheckBox();
         unboundType = new javax.swing.JRadioButton();
         reimaginedType = new javax.swing.JRadioButton();
         styleType = new javax.swing.ButtonGroup();
@@ -293,7 +299,6 @@ public class NewInstaller extends JFrame {
         installButton = new javax.swing.JButton();
         installationExplanation = new javax.swing.JLabel();
         euphoriaDescription = new JLabel();
-
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setIconImage(new ImageIcon(Objects.requireNonNull(Utils.class.getClassLoader().getResource("comp_icon.png"))).getImage());
@@ -311,7 +316,7 @@ public class NewInstaller extends JFrame {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 0;
-        gridBagConstraints.insets = new java.awt.Insets(30, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(38, 0, 0, 0);
         getContentPane().add(irisInstallerLabel, gridBagConstraints);
 
         //Shader Style Selector//
@@ -329,7 +334,6 @@ public class NewInstaller extends JFrame {
 
             styleType.add(reimaginedType);
             reimaginedType.setFont(reimaginedType.getFont().deriveFont((float)16));
-            reimaginedType.setSelected(true);
             reimaginedType.setText("Reimagined Style");
             reimaginedType.setToolTipText("");
             reimaginedType.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -372,7 +376,7 @@ public class NewInstaller extends JFrame {
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(20, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(30, 0, 0, 0);
         getContentPane().add(gameVersionLabel, gridBagConstraints);
         gameVersionList.setFont(new java.awt.Font("Arial", Font.PLAIN, 14)); // NOI18N
         gameVersionList.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "1.19", "1.18.2", "1.17.1", "1.16.5" }));
@@ -402,7 +406,7 @@ public class NewInstaller extends JFrame {
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(6, 0, 0, 0);
+        gridBagConstraints.insets = new java.awt.Insets(14, 0, 0, 0);
         getContentPane().add(outdatedText1, gridBagConstraints);
 
         outdatedText2.setFont(outdatedText2.getFont().deriveFont((float)16));
@@ -455,8 +459,8 @@ public class NewInstaller extends JFrame {
         installButton.setMaximumSize(new java.awt.Dimension(320, 45));
         installButton.setMinimumSize(new java.awt.Dimension(173, 45));
         installButton.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseReleased(java.awt.event.MouseEvent evt) {
-                installButtonMouseClicked(evt);
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                if (installButton.isEnabled()) installButtonMouseClicked(evt);
             }
         });
         installButton.putClientProperty( "JButton.buttonType", "roundRect" );
@@ -480,7 +484,7 @@ public class NewInstaller extends JFrame {
         settings.add(installationDirectory, gridBagConstraints);
 
         directoryName.setFont(directoryName.getFont().deriveFont((float)16));
-        directoryName.setLabel("Directory Name");
+        directoryName.setLabel(".minecraft");
         directoryName.setMaximumSize(new java.awt.Dimension(300, 36));
         directoryName.setMinimumSize(new java.awt.Dimension(300, 36));
         directoryName.setPreferredSize(new java.awt.Dimension(300, 36));
@@ -497,7 +501,7 @@ public class NewInstaller extends JFrame {
 
         installationType.setFont(installationType.getFont().deriveFont(installationType.getFont().getStyle() | java.awt.Font.BOLD, 16));
         installationType.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        installationType.setText(" Installation type:");
+        installationType.setText(" Mod Support:");
         installationType.setHorizontalTextPosition(javax.swing.SwingConstants.CENTER);
         installationType.setMaximumSize(new java.awt.Dimension(300, 24));
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -507,34 +511,19 @@ public class NewInstaller extends JFrame {
         gridBagConstraints.insets = new java.awt.Insets(20, 0, 0, 0);
         settings.add(installationType, gridBagConstraints);
 
-        installationTypesContainer.setLayout(new java.awt.BorderLayout(10, 0));
-            installType.add(standaloneType);
-            standaloneType.setFont(standaloneType.getFont().deriveFont((float)16));
-            standaloneType.setSelected(true);
-            standaloneType.setText("Iris Only");
-            standaloneType.setToolTipText("");
-            standaloneType.addMouseListener(new java.awt.event.MouseAdapter() {
-                public void mouseReleased(java.awt.event.MouseEvent evt) {
-                    standaloneTypeMouseClicked(evt);
-                }
-            });
-            installationTypesContainer.add(standaloneType, java.awt.BorderLayout.LINE_START);
-
-            installType.add(fabricType);
-            fabricType.setFont(fabricType.getFont().deriveFont((float)16));
-            fabricType.setText("Iris + Fabric");
-            fabricType.setToolTipText("");
-            fabricType.addMouseListener(new java.awt.event.MouseAdapter() {
-                public void mouseReleased(java.awt.event.MouseEvent evt) {
-                    fabricTypeMouseClicked(evt);
-                }
-            });
-            installationTypesContainer.add(fabricType, java.awt.BorderLayout.LINE_END);
-            gridBagConstraints = new java.awt.GridBagConstraints();
-            gridBagConstraints.gridx = 1;
-            gridBagConstraints.gridy = 4;
-            gridBagConstraints.insets = new java.awt.Insets(6, 0, 0, 0);
-        settings.add(installationTypesContainer, gridBagConstraints);
+        modSupportToggle.setFont(modSupportToggle.getFont().deriveFont((float)16));
+        modSupportToggle.setText("Enable Fabric mod support");
+        modSupportToggle.setToolTipText("When enabled, installs Iris and Sodium alongside Fabric, allowing you to add other mods.");
+        modSupportToggle.addItemListener(new java.awt.event.ItemListener() {
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
+                modSupportToggleItemStateChanged(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 4;
+        gridBagConstraints.insets = new java.awt.Insets(6, 0, 0, 0);
+        settings.add(modSupportToggle, gridBagConstraints);
 
         installationExplanation = new javax.swing.JLabel();
         installationExplanation.setFont(installationExplanation.getFont().deriveFont((float)13));
@@ -549,15 +538,10 @@ public class NewInstaller extends JFrame {
         gridBagConstraints.insets = new java.awt.Insets(5, 0, 0, 0);
         settings.add(installationExplanation, gridBagConstraints);
 
-        standaloneType.addActionListener(e -> {
-            standaloneTypeMouseClicked(null);
-            installationExplanation.setText("<html><center>Installs the Iris shader-loader to a reserved location to avoid unexpected problems.</center></html>");
-            euphoriaDescription.setVisible(false);
-        });
-        
-        fabricType.addActionListener(e -> {
-            fabricTypeMouseClicked(null);
-            installationExplanation.setText("<html><center>Installs Iris to the mods folder with a Fabric installation. This allows adding more Fabric mods, but it might cause a problem if there are already existing mods in your mods folder.</center></html>");
+        modSupportToggle.addActionListener(e -> {
+            installationExplanation.setText(modSupportToggle.isSelected()
+                ? "<html><center>Installs Iris to the mods folder with a Fabric installation. This allows adding more Fabric mods, but it might cause a problem if there are already existing mods in your mods folder.</center></html>"
+                : "<html><center>Installs the Iris shader-loader to a reserved location to avoid unexpected problems.</center></html>");
             euphoriaDescription.setVisible(false);
         });
 
@@ -592,7 +576,7 @@ public class NewInstaller extends JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void directoryNameMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_directoryNameMouseClicked
-        JFileChooser fileChooser = new JFileChooser();
+        SystemFileChooser fileChooser = new SystemFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         fileChooser.setFileHidingEnabled(false);
 
@@ -608,6 +592,7 @@ public class NewInstaller extends JFrame {
     private void gameVersionListItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_gameVersionListItemStateChanged
         if (evt.getStateChange() == ItemEvent.SELECTED) {
             selectedVersion = GAME_VERSIONS.stream().filter(v -> v.name.equals(evt.getItem())).findFirst().orElse(GAME_VERSIONS.get(0));
+            installButton.setEnabled(true);
 
             if (selectedVersion.outdated) {
                 outdatedText1.setText(outdatedPlaceholder.replace("<version>", selectedVersion.name));
@@ -626,12 +611,9 @@ public class NewInstaller extends JFrame {
         }
     }//GEN-LAST:event_gameVersionListItemStateChanged
 
-    private void standaloneTypeMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_standaloneTypeMouseClicked
-        installAsMod = false;
-    }//GEN-LAST:event_standaloneTypeMouseClicked
-    private void fabricTypeMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fabricTypeMouseClicked
-        installAsMod = true;
-    }//GEN-LAST:event_fabricTypeMouseClicked
+    private void modSupportToggleItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_modSupportToggleItemStateChanged
+        installAsMod = evt.getStateChange() == ItemEvent.SELECTED;
+    }//GEN-LAST:event_modSupportToggleItemStateChanged
 
     private void unboundStyleMouseClicked(java.awt.event.MouseEvent evt) {
         styleIsUnbound = true;
@@ -645,6 +627,13 @@ public class NewInstaller extends JFrame {
     }
 
     private void installButtonMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_installButtonMouseClicked
+        if (styleIsUnbound == null) {
+            JOptionPane.showMessageDialog(this, "Please select a shader style (Unbound or Reimagined) before installing.", "Select a Shader Style", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (!showLauncherOpenDialogAndWait()) {
+            return;
+        }
         if (isInternetNotAvailable() && showNetworkErrorDialog("starting installation")) {
             installButtonMouseClicked(evt);
             return;
@@ -1234,18 +1223,114 @@ public class NewInstaller extends JFrame {
         System.out.println("Registered statistics cleanup hook");
     }
 
+    private boolean showLauncherOpenDialogAndWait() {
+        if (!MojangLauncherHelperWrapper.isMojangLauncherOpen()) {
+            return true;
+        }
+
+        final boolean[] canceled = {false};
+        JDialog dialog = new JDialog(this, launcherOpenDialogTitle, true);
+        dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+
+        Color borderColor = UIManager.getColor("Separator.foreground");
+        if (borderColor == null) {
+            borderColor = new Color(140, 140, 140);
+        }
+
+        JPanel content = new JPanel(new BorderLayout());
+        content.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(borderColor),
+                BorderFactory.createEmptyBorder(20, 24, 18, 24)));
+
+        JProgressBar spinner = new JProgressBar();
+        spinner.setIndeterminate(true);
+        spinner.setBorderPainted(false);
+        spinner.setPreferredSize(new Dimension(20, 20));
+        spinner.setMinimumSize(new Dimension(20, 20));
+        spinner.setMaximumSize(new Dimension(20, 20));
+
+        JLabel message = new JLabel(launcherOpenDialogMessage);
+
+        JPanel messagePanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 6));
+        messagePanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+        messagePanel.add(spinner);
+        messagePanel.add(message);
+        content.add(messagePanel, BorderLayout.CENTER);
+
+        JButton cancelButton = new JButton("Cancel");
+        cancelButton.addActionListener(event -> {
+            canceled[0] = true;
+            dialog.dispose();
+        });
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
+        buttonPanel.add(cancelButton);
+        content.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(content);
+
+        AtomicInteger v = new AtomicInteger(0);
+        Timer timer = new Timer(500, event -> {
+            if (!MojangLauncherHelperWrapper.isMojangLauncherOpen()) {
+                dialog.dispose();
+            } else {
+                if (v.incrementAndGet() > 10) {
+                    int x = v.get();
+
+                    if (x == 20) {
+                        JButton cancelButton2 = new JButton("Continue anyway");
+                        cancelButton2.addActionListener(event2 -> {
+                            canceled[0] = false;
+                            dialog.dispose();
+                        });
+                        buttonPanel.add(cancelButton2);
+                    }
+
+                    if (x % 10 == 0) {
+                        if (x % 20 == 0) {
+                            message.setText("If it's not responding, restart your PC.");
+                        } else {
+                            message.setText(launcherOpenDialogMessage);
+                        }
+                    }
+                }
+            }
+        });
+        timer.start();
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent event) {
+                timer.stop();
+            }
+        });
+
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+
+        return !canceled[0];
+    }
+
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
         dark = DarkModeDetector.isDarkMode();
 
-        System.setProperty("apple.awt.application.appearance", "system");
 
+        System.setProperty("apple.awt.application.appearance", "system");
+        UIManager.put("Button.arc", 8);
+        UIManager.put("Component.arc", 8);
+        UIManager.put("ProgressBar.arc", 999);
+        UIManager.put("ScrollBar.thumbArc", 999);
+        UIManager.put("CheckBox.icon.textGap", 4);
+        UIManager.put("Component.defaultFontSize", 16);
+        UIManager.put("TitlePane.showIcon", false);
+        UIManager.put("TitlePane.centerTitle", true);
         if (dark) {
-            FlatDarkLaf.setup();
+            FlatDarculaLaf.setup();
         } else {
-            FlatLightLaf.setup();
+            FlatIntelliJLaf.setup();
         }
 
         System.out.println("Launching installer...");
@@ -1260,12 +1345,9 @@ public class NewInstaller extends JFrame {
     private javax.swing.JLabel gameVersionLabel;
     private javax.swing.JComboBox<String> gameVersionList;
     private javax.swing.JLabel installationDirectory;
-    private javax.swing.JRadioButton fabricType;
-    private javax.swing.JRadioButton standaloneType;
     private javax.swing.JButton installButton;
-    private javax.swing.ButtonGroup installType;
     private javax.swing.JLabel installationType;
-    private javax.swing.JPanel installationTypesContainer;
+    private javax.swing.JCheckBox modSupportToggle;
     private javax.swing.JRadioButton unboundType;
     private javax.swing.JRadioButton reimaginedType;
     private javax.swing.ButtonGroup styleType;

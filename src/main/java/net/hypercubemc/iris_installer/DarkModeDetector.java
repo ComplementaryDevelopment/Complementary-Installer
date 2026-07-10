@@ -7,11 +7,12 @@ import java.util.regex.Pattern;
 
 // Based off HanSolo's Detector, with added support for GNOME, and removed support for macOS accent colors for Java 8 compatibility. Original: https://gist.github.com/HanSolo/7cf10b86efff8ca2845bf5ec2dd0fe1d
 public class DarkModeDetector {
-    public enum OperatingSystem {WINDOWS, MACOS, LINUX, SOLARIS, NONE}
+    public enum OperatingSystem {WINDOWS, MACOS, LINUX, NONE}
 
     private static final String REGQUERY_UTIL = "reg query ";
     private static final String REGDWORD_TOKEN = "REG_DWORD";
-    private static final String DARK_THEME_CMD = REGQUERY_UTIL + "\"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\"" + " /v AppsUseLightTheme";
+    private static final String DARK_THEME_CMD = REGQUERY_UTIL + "\"HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\" /v AppsUseLightTheme";
+    private static final Pattern DARK_THEME_PATTERN = Pattern.compile(".*dark.*", Pattern.CASE_INSENSITIVE);
 
     public static boolean isDarkMode() {
         switch (getOperatingSystem()) {
@@ -20,23 +21,18 @@ public class DarkModeDetector {
             case MACOS:
                 return isMacOsDarkMode();
             case LINUX:
-                return isGnome() && isGnomeDarkMode();
-            case SOLARIS: // Solaris is screwed so we'll just return false.
+                return (isGnome() && isGnomeDarkMode()) || (isKde() && isKdeDarkMode());
             default:
                 return false;
         }
     }
 
-    public static boolean isMacOsDarkMode() {
-        boolean isDarkMode = false;
-        String line = query("defaults read -g AppleInterfaceStyle");
-        if (line.equals("Dark")) {
-            isDarkMode = true;
-        }
-        return isDarkMode;
+    private static boolean isMacOsDarkMode() {
+        String result = query("defaults read -g AppleInterfaceStyle");
+        return "Dark".equals(result);
     }
 
-    public static boolean isWindowsDarkMode() {
+    private static boolean isWindowsDarkMode() {
         try {
             String result = query(DARK_THEME_CMD);
             int p = result.indexOf(REGDWORD_TOKEN);
@@ -45,41 +41,40 @@ public class DarkModeDetector {
                 return false;
             }
 
-            // 1 == Light Mode, 0 == Dark Mode
             String temp = result.substring(p + REGDWORD_TOKEN.length()).trim();
-            return ((Integer.parseInt(temp.substring("0x".length()), 16))) == 0;
+            return Integer.parseInt(temp.substring(2), 16) == 0;
         } catch (Exception e) {
             return false;
         }
     }
 
-    public static boolean isGnomeDarkMode() {
-        // This is based off jSystemThemeDetector's code.
-        final Pattern darkThemeNamePattern = Pattern.compile(".*dark.*", Pattern.CASE_INSENSITIVE);
-        return darkThemeNamePattern.matcher(query("gsettings get org.gnome.desktop.interface gtk-theme")).matches();
+    private static boolean isGnomeDarkMode() {
+        String result = query("gsettings get org.gnome.desktop.interface gtk-theme");
+        return DARK_THEME_PATTERN.matcher(result).matches();
     }
 
-    public static OperatingSystem getOperatingSystem() {
-        String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("win")) {
-            return OperatingSystem.WINDOWS;
-        } else if (os.contains("mac")) {
-            return OperatingSystem.MACOS;
-        } else if (os.contains("nix") || os.contains("nux")) {
-            return OperatingSystem.LINUX;
-        } else if (os.contains("sunos")) {
-            return OperatingSystem.SOLARIS;
-        } else {
-            return OperatingSystem.NONE;
-        }
-    }
-
-    // The following GNOME + query methods are based off jSystemThemeDetector's code.
-    public static boolean isGnome() {
+    private static boolean isGnome() {
         return getOperatingSystem() == OperatingSystem.LINUX && (
                 queryResultContains("echo $XDG_CURRENT_DESKTOP", "gnome") ||
                         queryResultContains("echo $XDG_DATA_DIRS | grep -Eo 'gnome'", "gnome") ||
                         queryResultContains("ps -e | grep -E -i \"gnome\"", "gnome")
+        );
+    }
+
+    private static boolean isKdeDarkMode() {
+        String currentLookAndFeel = query("lookandfeeltool --current");
+        if (currentLookAndFeel.isEmpty()) {
+            String alternativeLookAndFeel = query("kreadconfig5 --group KDE --key LookAndFeelPackage");
+            return alternativeLookAndFeel.toLowerCase().contains("dark");
+        }
+        return currentLookAndFeel.toLowerCase().contains("dark");
+    }
+
+    private static boolean isKde() {
+        return getOperatingSystem() == OperatingSystem.LINUX && (
+                queryResultContains("echo $XDG_CURRENT_DESKTOP", "KDE") ||
+                        queryResultContains("echo $XDG_DATA_DIRS | grep -Eo 'kde'", "kde") ||
+                        queryResultContains("ps -e | grep -E -i \"kde\"", "kde")
         );
     }
 
@@ -101,9 +96,20 @@ public class DarkModeDetector {
             }
             return stringBuilder.toString();
         } catch (IOException e) {
-            System.out.println("Exception caught while querying the OS:");
-            e.printStackTrace();
             return "";
+        }
+    }
+
+    private static OperatingSystem getOperatingSystem() {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            return OperatingSystem.WINDOWS;
+        } else if (os.contains("mac")) {
+            return OperatingSystem.MACOS;
+        } else if (os.contains("nix") || os.contains("nux")) {
+            return OperatingSystem.LINUX;
+        } else {
+            return OperatingSystem.NONE;
         }
     }
 }
